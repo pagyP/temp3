@@ -141,8 +141,7 @@ resource "azurerm_application_gateway" "appgw" {
     ip_configuration {
       name                          = "appgw-private-link-ip"
       subnet_id                     = azurerm_subnet.private_endpoints.id
-      private_ip_address_allocation = "Static"
-      private_ip_address            = var.appgw_private_link_ip
+      private_ip_address_allocation = "Dynamic"
       primary = true
     }
   }
