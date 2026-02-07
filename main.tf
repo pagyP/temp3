@@ -10,7 +10,7 @@ terraform {
 
 provider "azurerm" {
   features {}
-  subscription_id = ""
+  subscription_id = "xxxxxxx"
 }
 
 #####################
@@ -61,7 +61,7 @@ variable "appgw_backend_ip" {
 # Resource Group
 #####################
 resource "azurerm_resource_group" "rg" {
-  name     = "${var.prefix}-rg"
+  name     = "${var.prefix}-rg1"
   location = var.location
 }
 
@@ -128,6 +128,7 @@ resource "azurerm_application_gateway" "appgw" {
     subnet_id                     = azurerm_subnet.appgw.id
     private_ip_address_allocation = "Static"
     private_ip_address            = var.appgw_private_ip
+    private_link_configuration_name = "appgw-private-link"
   }
 
   frontend_ip_configuration {
@@ -139,7 +140,7 @@ resource "azurerm_application_gateway" "appgw" {
     name = "appgw-private-link"
 
     ip_configuration {
-      name                          = "appgw-private-link-ip"
+      name                          = "private-frontend"
       subnet_id                     = azurerm_subnet.private_endpoints.id
       private_ip_address_allocation = "Dynamic"
       primary = true
@@ -215,8 +216,8 @@ resource "azurerm_cdn_frontdoor_origin" "fd_origin" {
   
 
   # Host header for lab (HTTP). Use a DNS name you control if needed.
-  host_name          = "appgw.lab.internal"
-  origin_host_header = "appgw.lab.internal"
+  host_name          = "10.10.1.10"
+  origin_host_header = "10.10.1.10"
 
   http_port  = 80
   https_port = 443
@@ -226,11 +227,13 @@ resource "azurerm_cdn_frontdoor_origin" "fd_origin" {
 
   private_link {
     //private_link_target_id = "${azurerm_application_gateway.appgw.id}/privateLinkConfigurations/appgw-private-link"
-    private_link_target_id = "/subscriptions/4b0f6822-1a89-46e3-be94-52b5184e6daa/resourceGroups/labfd-rg/providers/Microsoft.Network/privateLinkServices/_e41f87a2_labfd-appgw_private_link_config"
+     private_link_target_id = "/subscriptions/xxxxxxx/resourceGroups/labfd-rg1/providers/Microsoft.Network/privateLinkServices/_e41f87a2_labfd-appgw_appgw-private-link"
     location               = azurerm_resource_group.rg.location
     request_message        = "Please approve Front Door Private Link to App Gateway."
   }
+  //depends_on = [ azurerm_application_gateway.appgw ]
 }
+
 
 resource "azurerm_cdn_frontdoor_route" "fd_route" {
   name                            = "${var.prefix}-fd-route"
@@ -241,4 +244,26 @@ resource "azurerm_cdn_frontdoor_route" "fd_route" {
   patterns_to_match               = ["/*"]
   forwarding_protocol             = "HttpOnly"
   link_to_default_domain          = true
+  https_redirect_enabled = false
+}
+
+
+resource "azurerm_log_analytics_workspace" "this" {
+  name                = "${var.prefix}-law"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "PerGB2018"
+  
+}
+
+resource "azurerm_monitor_diagnostic_setting" "appgwdiagnostic" {
+  name               = "${var.prefix}-appgw-diagnostic"
+  target_resource_id = azurerm_application_gateway.appgw.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
+
+  enabled_log {category = "ApplicationGatewayAccessLog"}
+
+  enabled_log {category = "ApplicationGatewayPerformanceLog"}
+
+  enabled_log {category = "ApplicationGatewayFirewallLog"}
 }
